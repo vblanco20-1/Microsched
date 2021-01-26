@@ -341,6 +341,8 @@ int main()
 	result1.Print("test_simple");
 	
 	int jobcounts[8] = { 5,10,20,64,100,1000,10000,1'000'000};
+	int batchcounts[8] = { 1,1,2,4,8,16,64,1024};
+
 
 	int num_retries = 3;
 
@@ -396,9 +398,9 @@ int main()
 
 		for (int i = 0; i < 7; i++)
 		{
-			int nbatches = (jobcounts[i] / 256) + 1;
+			int nbatches = batchcounts[i];//(jobcounts[i] / 1024) + 1;
 			float time = 0;
-			for (int n = 0; n < num_retries; n++)
+			//for (int n = 0; n < num_retries; n++)
 			{
 				auto result1 = test_parallel_for(&sch, jobcounts[i], nbatches, sched::ExecutionMode::Singlethread);
 				std::stringstream ss;
@@ -425,7 +427,7 @@ int main()
 			for (int n = 0; n < num_retries; n++)
 			{
 				int nbatches = (jobcounts[i] / 256) + 1;
-				auto result1 = mega_test(&sch, jobcounts[i], nbatches);
+				auto result1 = mega_test(&sch, jobcounts[i], batchcounts[i]);
 				std::stringstream ss;
 				ss << "megatest " << jobcounts[i];
 				result1.Print(ss.str());

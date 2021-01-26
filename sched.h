@@ -180,53 +180,6 @@ namespace sched {
 		void parallel_for(Scheduler* sch, int start, int end, int batch, F&& function, ExecutionMode mode = ExecutionMode::Recursive);
 
 		template<typename F>
-		void parallel_for_chunked(Scheduler* sch, int start, int end, int batch, F&& function) {
-			int nbatches = ((end - start) / batch) + 1;
-			Job** jobs = nullptr;
-			void* bulk_storage = nullptr;
-			{
-				//ZoneScopedN("Allocate Jobs");
-				jobs = new Job* [nbatches];
-				bulk_storage = malloc(sizeof(Job) * nbatches);
-			}
-			std::atomic<int> jobend = nbatches;
-			{
-				//ZoneScopedN("Ready Jobs");
-				for (int i = 0; i < nbatches; i++)
-				{
-					char* data = static_cast<char*>(bulk_storage);
-					data += sizeof(Job) * i;
-
-					jobs[i] = new(data) Job{};
-
-					jobs[i]->finishedAtomic = &jobend;
-
-					auto callback = [&, i]() {
-
-						int _pack = batch;
-						int _begin = _pack * i;
-						int _end = _pack * (i + 1);
-						if (_end > end)
-						{
-							_end = end;
-						}
-						if (_begin != _end)
-						{
-							parallel_for(sch, _begin, _end, 1, function, ExecutionMode::Singlethread);
-						}
-					};
-					jobs[i]->set_callback(callback);
-				}
-			}
-
-			sch->bulk_enqueue(jobs, nbatches);
-
-			sch->wait_atomic(&jobend, 0);
-
-			delete bulk_storage;
-			delete[] jobs;
-		}
-		template<typename F>
 		void parallel_for_recursive(Scheduler* sch, int start, int end, int batch, F&& function) {
 
 			int range = end - start;
@@ -245,12 +198,55 @@ namespace sched {
 				);
 			}
 			else {
-				for (int i = start; i < end; i++)
-				{
-					function(i);
-				}
+				parallel_for(sch, start, end, batch, function, ExecutionMode::Singlethread);
 			}
 		}
+		template<typename F>
+		void parallel_for_atomic(Scheduler* sch, int start, int end, int batch, F&& function) {
+			int nbatches = ((end - start) / batch) + 1;
+		
+			sched::Job localjobs[16];
+			sched::Job* jobpointers[16];
+			std::atomic<int> batchcounter{0};
+			
+			int jobs = 16;
+			if (nbatches < jobs) {
+				jobs = nbatches;
+			}
+
+			std::atomic<int> jobend = jobs;
+
+			for (int i = 0; i < jobs; i++)
+			{
+				localjobs[i].init();
+				jobpointers[i] = localjobs + i;
+				localjobs[i].finishedAtomic = &jobend;
+
+				auto callback = [=,&batchcounter, &function]() {
+					while (true)
+					{
+						int idx = batchcounter.fetch_add(1);
+						if (idx > nbatches) { return; };
+						int _pack = batch;
+						int _begin = _pack * idx;
+						int _end = _pack * (idx + 1);
+						if (_end > end)
+						{
+							_end = end;
+						}
+						if (_begin != _end)
+						{
+							parallel_for(sch, _begin, _end, 1, function, ExecutionMode::Singlethread);
+						}
+					}
+				};
+				localjobs[i].set_callback(callback);
+			}
+
+			sch->bulk_enqueue(jobpointers, jobs);
+			sch->wait_atomic(&jobend,0);
+		}
+
 		template<typename F>
 		void parallel_for(Scheduler * sch, int start, int end, int batch, F && function, ExecutionMode mode) {
 
@@ -260,7 +256,7 @@ namespace sched {
 			}
 			else if (mode == ExecutionMode::Chunked)
 			{
-				parallel_for_chunked(sch, start, end, batch, function);
+				parallel_for_atomic(sch, start, end, batch, function);
 			}
 			else {
 				//ZoneScopedNC("RUN JOB", tracy::Color::Red);
