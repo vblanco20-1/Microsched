@@ -12,6 +12,8 @@ namespace std {
 }
 namespace sched {
 
+	const size_t CACHELINE_SIZE = 64;
+
 	struct Job {
 		enum class JobState : char {
 			created = 0,
@@ -39,9 +41,9 @@ namespace sched {
 			+ sizeof(finishState)
 			+ sizeof(fn);
 
-		static constexpr std::size_t PADDING_SIZE = 64;
+		
 
-		static constexpr std::size_t JOB_PADDING_SIZE = PADDING_SIZE - JOB_PAYLOAD_SIZE;
+		static constexpr std::size_t JOB_PADDING_SIZE = CACHELINE_SIZE - JOB_PAYLOAD_SIZE;
 
 		std::array<char, JOB_PADDING_SIZE> padding;
 		

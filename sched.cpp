@@ -11,6 +11,7 @@
 #include <thread>
 
 #include <iostream>
+#include "intrin.h"
 using namespace sched;
 namespace sched {
 	struct RNG {
@@ -35,14 +36,22 @@ namespace sched {
 
 
 	//benchmarked to be a lot faster than std::mutex for this use case
-	class alignas (64) SpinLock {
-		std::atomic_flag locked = ATOMIC_FLAG_INIT;
+	class alignas (sched::CACHELINE_SIZE) SpinLock {
+		std::atomic<bool> lock_ = { false };
+
 	public:
 		void lock() {
-			while (locked.test_and_set(std::memory_order_acquire)) { ; }
+			for (;;) {
+				if (!lock_.exchange(true, std::memory_order_acquire)) {
+					break;
+				}
+				while (lock_.load(std::memory_order_relaxed)) {
+					std::this_thread::yield();
+				}
+			}
 		}
 		void unlock() {
-			locked.clear(std::memory_order_release);
+			lock_.store(false, std::memory_order_release);
 		}
 	};
 	template<typename T, int N>
@@ -364,6 +373,7 @@ void sched::Scheduler::bulk_enqueue(Job** first, size_t count)
 	workers[self]->bulk_add(first, idx);
 
 	//enqueue the rest of the jobs spread across random workers 16 at a time
+	int rng = rand() % num;
 
 	while (idx < count)
 	{
@@ -373,10 +383,10 @@ void sched::Scheduler::bulk_enqueue(Job** first, size_t count)
 			bulk = left;
 		}
 
-		int rng = rand() % num;
-
 		validworkers[rng]->bulk_add(first + idx, bulk);
 		idx += bulk;
+
+		rng = (rng + 1) % num;
 	}
 }
 
