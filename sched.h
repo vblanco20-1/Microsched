@@ -94,8 +94,6 @@ namespace sched {
 
 		std::atomic<int> enqueued_jobs;
 
-		std::vector<Worker*> parked_workers;
-
 		std::atomic<int> num_parked;
 
 		std::mutex* park_mutex;
@@ -180,58 +178,6 @@ namespace sched {
 	namespace algo {
 		template<typename F>
 		void parallel_for(Scheduler* sch, int start, int end, int batch, F&& function, ExecutionMode mode = ExecutionMode::Recursive);
-
-		template<typename T, typename F>
-		T accumulate(Scheduler* sch, T* start, T* end, int batch, F&& function, ExecutionMode mode = ExecutionMode::Recursive) {
-			if (mode == ExecutionMode::Recursive)
-			{
-				return accumulate_recursive(sch, start, end, batch, function);
-			}
-			else if (mode == ExecutionMode::Singlethread)
-			{
-				//ZoneScopedNC("RUN JOB", tracy::Color::Red);
-				T val = *start;
-				while (start != end)
-				{
-					val = function(*start, val);
-					start++;
-				}
-				return val;
-			}
-			else {
-				assert(true);
-				return T{};
-			}
-		}
-		template<typename T, typename F>
-		T accumulate_recursive(Scheduler* sch, T* start, T* end, int batch, F&& function) {
-
-			int range = end - start;
-			assert(range >= 0);
-
-			if (range > batch) {
-
-				T* midpoint = (end - start) / 2 + start;
-
-				T val1{};
-				T val2{};
-				sch->split([&]() {
-
-					val1 = accumulate<T>(sch, start, midpoint, batch, function);
-
-					}
-					, [&]() {
-
-						val2 = accumulate<T>(sch, midpoint, end, batch, function);
-					}
-					);
-
-				return function(val1, val2);
-			}
-			else {
-				return accumulate(sch, start, end, batch, function, ExecutionMode::Singlethread);
-			}
-		}
 
 		template<typename F>
 		void parallel_for_chunked(Scheduler* sch, int start, int end, int batch, F&& function) {

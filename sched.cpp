@@ -456,10 +456,6 @@ void sched::Worker::bulk_add(Job** first, size_t count)
 		}
 	}
 	else {
-		//for (int i = 0; i < count; i++)
-		//{
-		//	add_job(first[i]);
-		//}
 
 		//enqueue the jobs
 		for (int i = 0; i < count; i++)
